@@ -18,4 +18,11 @@ cp "$ROOT"/src/Varta/Assets/default_sounds/*.mp3 "$OUT/sounds/"
 { printf '\xEF\xBB\xBF'; sed 's/\r$//; s/$/\r/' "$ROOT/docs/README_UA.txt"; } > "$OUT/README_UA.txt"
 
 ( cd "$ROOT/dist" && rm -f Varta-portable.zip && zip -qr -X Varta-portable.zip Varta )
-echo "Готово: $ROOT/dist/Varta-portable.zip"
+
+# Оновлення наявної установки: лише програма (налаштування й звуки не зачіпаються)
+UPD="$ROOT/dist/_update"
+rm -rf "$UPD" && mkdir -p "$UPD"
+cp "$OUT/Varta.exe" "$OUT/Varta.exe.config" "$UPD/"
+( cd "$UPD" && rm -f ../Varta-update.zip && zip -qr -X ../Varta-update.zip . )
+rm -rf "$UPD"
+echo "Готово: $ROOT/dist/Varta-portable.zip, $ROOT/dist/Varta-update.zip"

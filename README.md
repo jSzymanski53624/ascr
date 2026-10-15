@@ -6,6 +6,13 @@
 
 **Готова збірка:** [`dist/Varta-portable.zip`](dist/Varta-portable.zip) — розпакувати й запустити `Varta.exe`
 (інструкція для користувача — `docs/README_UA.txt`, лежить і всередині архіву).
+**Оновлення вже встановленої:** [`dist/Varta-update.zip`](dist/Varta-update.zip) — лише `Varta.exe`, налаштування й звуки не чіпає.
+
+## Зміни
+* **1.0.1** — вибір звукового файлу застосовується одразу (раніше потрібно було натиснути «Зберегти», а на сторінці «Стан» тест грав старий файл);
+  панель незбережених змін видно на будь-якій сторінці; під кожним файлом показано, що діє зараз; у «Стані» видно, які файли використовуються,
+  а в журналі — який файл відтворено; вибір файлу, який не відкривається, потребує підтвердження; резервний сигнал можна перервати.
+* **1.0.0** — перший випуск.
 
 ## Рівні
 | Рівень | Значення | Звідки береться |
@@ -36,8 +43,8 @@ tools/              make_icon.py (значок), package.sh (збірка пер
 
 ## Збірка й перевірка
 ```bash
-dotnet test tests/Varta.Tests          # 48 тестів логіки
-bash tools/package.sh                  # dist/Varta/ + dist/Varta-portable.zip
+dotnet test tests/Varta.Tests          # 54 тести логіки
+bash tools/package.sh                  # dist/Varta/, dist/Varta-portable.zip, dist/Varta-update.zip
 uv run --with pillow python tools/make_icon.py   # перегенерувати значок
 ```
 Збірка працює на Linux/macOS/Windows з .NET SDK 8+.

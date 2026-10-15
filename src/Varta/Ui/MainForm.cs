@@ -19,7 +19,7 @@ namespace Varta.Ui
         readonly Panel _content = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
         readonly Panel _header = new Panel { Dock = DockStyle.Top, Height = 78, BackColor = Color.White };
         readonly Panel _stripe = new Panel { Dock = DockStyle.Bottom, Height = 4 };
-        readonly Panel _saveBar = new Panel { Dock = DockStyle.Bottom, Height = 62, BackColor = Color.White, Visible = false };
+        readonly Panel _saveBar = new Panel { Dock = DockStyle.Bottom, Height = 64, BackColor = Color.FromArgb(255, 244, 229), Visible = false };
         readonly Panel _pageHost = new Panel { Dock = DockStyle.Fill, BackColor = Theme.Bg };
         readonly Label _title = new Label { AutoSize = true, Font = Theme.F(17f, FontStyle.Bold), ForeColor = Theme.Navy, Location = new Point(28, 10), BackColor = Color.Transparent };
         readonly Label _subtitle = new Label { AutoSize = true, Font = Theme.F(10f), ForeColor = Theme.Muted, Location = new Point(30, 46), BackColor = Color.Transparent };
@@ -28,7 +28,7 @@ namespace Varta.Ui
             AutoSize = false, TextAlign = ContentAlignment.MiddleCenter, Font = Theme.F(10f, FontStyle.Bold),
             Size = new Size(210, 34), Anchor = AnchorStyles.Top | AnchorStyles.Right
         };
-        readonly Label _dirtyLabel = new Label { AutoSize = true, Font = Theme.F(10f), Location = new Point(28, 20), BackColor = Color.Transparent };
+        readonly Label _dirtyLabel = new Label { Dock = DockStyle.Fill, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Font = Theme.F(9.75f, FontStyle.Bold), ForeColor = Theme.Orange, BackColor = Color.Transparent };
         readonly Button _save = UiKit.Btn("Зберегти налаштування", true);
         readonly Button _cancel = UiKit.Btn("Скасувати зміни", false);
         readonly List<NavButton> _nav = new List<NavButton>();
@@ -72,7 +72,11 @@ namespace Varta.Ui
             foreach (PageBase p in _pages)
             {
                 var sp = p as SettingsPage;
-                if (sp != null) sp.Changed += delegate { SetDirty(true); };
+                if (sp != null)
+                {
+                    sp.Changed += delegate { SetDirty(true); };
+                    sp.CommitRequested += delegate { SaveAll(false); };
+                }
             }
             ReloadPages();
             c.SettingsApplied += delegate { ReloadPages(); };
@@ -132,17 +136,23 @@ namespace Varta.Ui
             _header.Resize += delegate { _pill.Location = new Point(_header.Width - _pill.Width - 28, 20); };
             _pill.Location = new Point(800, 20);
 
-            // панель збереження
-            _save.Anchor = AnchorStyles.Right | AnchorStyles.Top;
-            _cancel.Anchor = AnchorStyles.Right | AnchorStyles.Top;
-            _saveBar.Controls.Add(_dirtyLabel);
-            _saveBar.Controls.Add(_save);
-            _saveBar.Controls.Add(_cancel);
-            _saveBar.Resize += delegate { LayoutSaveBar(); };
-            _saveBar.Paint += delegate(object s, PaintEventArgs e) { using (var p = new Pen(Theme.Line)) e.Graphics.DrawLine(p, 0, 0, _saveBar.Width, 0); };
-            _save.Click += delegate { SaveAll(); };
+            // панель збереження: видима на будь-якій сторінці, доки є незбережені зміни
+            var barLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(28, 8, 28, 8), BackColor = Color.Transparent };
+            barLayout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+            barLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            barLayout.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+            barLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
+            _save.Anchor = AnchorStyles.None;
+            _cancel.Anchor = AnchorStyles.None;
+            _save.Margin = new Padding(0);
+            _cancel.Margin = new Padding(12, 0, 12, 0);
+            barLayout.Controls.Add(_dirtyLabel, 0, 0);
+            barLayout.Controls.Add(_cancel, 1, 0);
+            barLayout.Controls.Add(_save, 2, 0);
+            _saveBar.Controls.Add(barLayout);
+            _saveBar.Paint += delegate(object s, PaintEventArgs e) { using (var p = new Pen(Theme.Orange, 2f)) e.Graphics.DrawLine(p, 0, 1, _saveBar.Width, 1); };
+            _save.Click += delegate { SaveAll(true); };
             _cancel.Click += delegate { ReloadPages(); };
-            LayoutSaveBar();
 
             foreach (PageBase p in _pages) { p.Dock = DockStyle.Fill; _pageHost.Controls.Add(p); }
 
@@ -152,12 +162,6 @@ namespace Varta.Ui
 
             Controls.Add(_content);
             Controls.Add(_sidebar);
-        }
-
-        void LayoutSaveBar()
-        {
-            _save.Location = new Point(_saveBar.Width - _save.Width - 28, 14);
-            _cancel.Location = new Point(_save.Left - _cancel.Width - 10, 14);
         }
 
         // ---------- навігація ----------
@@ -176,7 +180,6 @@ namespace Varta.Ui
             _current = p;
             _title.Text = p.PageTitle;
             _subtitle.Text = p.PageSubtitle;
-            _saveBar.Visible = p.IsSettingsPage;
             UpdateDirtyLabel();
             p.OnShown();
             UpdateAll();
@@ -198,10 +201,8 @@ namespace Varta.Ui
 
         void UpdateDirtyLabel()
         {
-            _dirtyLabel.Text = _dirty ? "●  Є незбережені зміни" : "Усі зміни збережено";
-            _dirtyLabel.ForeColor = _dirty ? Theme.Orange : Theme.Muted;
-            _save.Visible = _dirty;
-            _cancel.Visible = _dirty;
+            _dirtyLabel.Text = "●  Є незбережені зміни — тривоги й тести поки що працюють за старими налаштуваннями.";
+            _saveBar.Visible = _dirty;
         }
 
         List<string> Validate(AppSettings s)
@@ -225,7 +226,8 @@ namespace Varta.Ui
             return w;
         }
 
-        bool SaveAll()
+        /// <summary>Зберігає й застосовує зміни з усіх сторінок. interactive=false — без вікна з попередженнями (їх буде записано в журнал).</summary>
+        bool SaveAll(bool interactive)
         {
             AppSettings s = SettingsJson.Clone(_c.Settings);
             foreach (SettingsPage p in SettingsPages) p.SaveTo(s);
@@ -241,7 +243,12 @@ namespace Varta.Ui
             }
             if (extra != null) warn.Add(extra);
             if (warn.Count > 0)
-                MessageBox.Show(this, "Налаштування збережено, але зверніть увагу:\n\n• " + string.Join("\n• ", warn.ToArray()), "ВАРТА", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            {
+                if (interactive)
+                    MessageBox.Show(this, "Налаштування збережено, але зверніть увагу:\n\n• " + string.Join("\n• ", warn.ToArray()), "ВАРТА", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else
+                    foreach (string w in warn) Log.Warn("Після збереження: " + w);
+            }
             return true;
         }
 
@@ -308,7 +315,7 @@ namespace Varta.Ui
                 {
                     DialogResult r = MessageBox.Show(this, "Є незбережені зміни. Зберегти їх?", "ВАРТА", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
                     if (r == DialogResult.Cancel) { e.Cancel = true; return; }
-                    if (r == DialogResult.Yes && !SaveAll()) { e.Cancel = true; return; }
+                    if (r == DialogResult.Yes && !SaveAll(true)) { e.Cancel = true; return; }
                     if (r == DialogResult.No) ReloadPages();
                 }
                 if (_c.Settings.CloseToTray)

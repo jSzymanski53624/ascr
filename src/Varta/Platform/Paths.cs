@@ -8,8 +8,10 @@ namespace Varta.Platform
     public static class Paths
     {
         public static readonly string ExePath;
-        public static readonly string AppDir;
-        public static readonly string DataDir;
+        public static string AppDir { get; private set; }
+        public static string DataDir { get; private set; }
+
+        internal static void SetRoots(string appDir, string dataDir) { AppDir = appDir; DataDir = dataDir; }
 
         static Paths()
         {

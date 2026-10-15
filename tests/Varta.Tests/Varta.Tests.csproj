@@ -16,6 +16,8 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\Varta\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\Varta\Platform\Paths.cs" Link="Platform\Paths.cs" />
+    <Compile Include="..\..\src\Varta\Platform\SoundFiles.cs" Link="Platform\SoundFiles.cs" />
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

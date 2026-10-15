@@ -42,7 +42,12 @@ namespace Varta.Ui
         bool _loading;
 
         public event Action Changed;
+        /// <summary>Просить вікно одразу зберегти й застосувати всі зміни (наприклад, після вибору звукового файлу).</summary>
+        public event Action CommitRequested;
         public override bool IsSettingsPage { get { return true; } }
+
+        public AppSettings Saved { get { return C.Settings; } }
+        public void CommitNow() { var h = CommitRequested; if (h != null) h(); }
 
         protected SettingsPage(AppController c)
         {
@@ -266,84 +271,81 @@ namespace Varta.Ui
             });
         }
 
-        /// <summary>Рядок вибору звукового файлу: шлях, «Обрати…», «Слухати», «Стандартний».</summary>
+        /// <summary>Рядок вибору звукового файлу. Вибір («Обрати файл…» або «Стандартний») застосовується одразу, без кнопки «Зберегти».</summary>
         public void SoundRow(string label, Func<AppSettings, string> get, Action<AppSettings, string> set, string defaultStored, string hint)
         {
             var host = new Panel { BackColor = Color.Transparent };
             var tb = new TextBox { ReadOnly = true, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle, Font = Theme.F(9.5f), Dock = DockStyle.Top };
-            var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
+            var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
+            var status = new Label { Dock = DockStyle.Top, Height = 22, Font = Theme.F(9f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, BackColor = Color.Transparent };
             Button pick = UiKit.Btn("Обрати файл…", false);
             Button play = UiKit.Btn("▶ Прослухати", false);
             Button reset = UiKit.Btn("Стандартний", false);
             buttons.Controls.Add(pick);
             buttons.Controls.Add(play);
             buttons.Controls.Add(reset);
+            host.Controls.Add(status);
             host.Controls.Add(buttons);
             host.Controls.Add(tb);
-            Row(label, host, 0, 76, hint);
+            Row(label, host, 0, 96, hint);
+
+            Action<string, Color> say = delegate(string text, Color c) { status.Text = text; status.ForeColor = c; };
+            Action refresh = delegate
+            {
+                string stored = tb.Text.Trim();
+                string full = Paths.Resolve(stored);
+                if (stored.Length == 0) say("файл не вказано", Theme.Muted);
+                else if (!File.Exists(full)) say("✗ файл не знайдено: " + Path.GetFileName(full), Theme.Red);
+                else say("✓ Діє: " + Path.GetFileName(full) + " • " + SizeText(new FileInfo(full).Length), Theme.Green);
+            };
+            Func<bool> commit = delegate
+            {
+                _page.MarkChanged();
+                _page.CommitNow();
+                bool ok = string.Equals((get(_page.Saved) ?? "").Trim(), tb.Text.Trim(), StringComparison.OrdinalIgnoreCase);
+                if (!ok) say("✗ Зміну не збережено — див. повідомлення про помилку", Theme.Red);
+                return ok;
+            };
 
             pick.Click += delegate
             {
-                string stored = PickSound(tb.Text);
-                if (stored != null) { tb.Text = stored; _page.MarkChanged(); }
+                string chosen = PickFile();
+                if (chosen == null) return;
+                int len;
+                string problem = AudioService.CheckFile(chosen, out len);
+                if (problem != null && MessageBox.Show("Цей файл не вдалося відкрити: " + problem + ".\n\nЯкщо його обрати, замість голосу прозвучить резервний сигнал.\nВсе одно використати?",
+                        "ВАРТА", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+                SoundImportResult imp = SoundFiles.Import(chosen);
+                if (imp.Warning.Length > 0) MessageBox.Show(imp.Warning, "ВАРТА", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                tb.Text = imp.Stored;
+                if (commit())
+                    say("✓ Застосовано: " + Path.GetFileName(imp.FullPath) + (len > 0 ? " • " + (len / 1000.0).ToString("0.0") + " с" : "") +
+                        (imp.Copied ? " • скопійовано в папку sounds" : ""), Theme.Green);
             };
             play.Click += delegate { _page.PlayPreview(tb.Text); };
-            reset.Click += delegate { tb.Text = defaultStored; _page.MarkChanged(); };
-            _page.Bind(s => tb.Text = get(s) ?? "", s => set(s, tb.Text.Trim()));
+            reset.Click += delegate
+            {
+                tb.Text = defaultStored;
+                if (commit()) refresh();
+            };
+            _page.Bind(s => { tb.Text = get(s) ?? ""; refresh(); }, s => set(s, tb.Text.Trim()));
         }
 
-        static string PickSound(string current)
+        static string SizeText(long bytes)
+        {
+            return bytes < 1024 * 1024 ? Math.Max(1, bytes / 1024) + " КБ" : (bytes / 1048576.0).ToString("0.0") + " МБ";
+        }
+
+        static string PickFile()
         {
             using (var d = new OpenFileDialog())
             {
                 d.Title = "Оберіть звуковий файл оголошення";
                 d.Filter = "Звукові файли (*.mp3;*.wav)|*.mp3;*.wav|Усі файли (*.*)|*.*";
+                d.RestoreDirectory = true;
                 try { d.InitialDirectory = Directory.Exists(Paths.SoundsDir) ? Paths.SoundsDir : Paths.DataDir; } catch { }
-                if (d.ShowDialog() != DialogResult.OK) return null;
-                string chosen = d.FileName;
-                string root = Paths.DataDir.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
-                string finalPath = chosen;
-                if (!chosen.StartsWith(root, StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        Directory.CreateDirectory(Paths.SoundsDir);
-                        string name = Path.GetFileName(chosen);
-                        string target = Path.Combine(Paths.SoundsDir, name);
-                        int i = 2;
-                        while (File.Exists(target) && !SameFile(chosen, target))
-                            target = Path.Combine(Paths.SoundsDir, Path.GetFileNameWithoutExtension(name) + "_" + (i++) + Path.GetExtension(name));
-                        if (!File.Exists(target)) File.Copy(chosen, target);
-                        finalPath = target;
-                        MessageBox.Show("Файл скопійовано в папку «sounds» поруч із програмою — так її можна переносити на інший комп'ютер разом із налаштуваннями.",
-                            "ВАРТА", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                    catch (Exception ex)
-                    {
-                        MessageBox.Show("Не вдалося скопіювати файл у папку «sounds»: " + ex.Message + "\nБуде використано оригінальний шлях.", "ВАРТА", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    }
-                }
-                string err;
-                int len;
-                err = AudioService.CheckFile(finalPath, out len);
-                if (err != null)
-                    MessageBox.Show("Увага: файл може не відтворюватися — " + err + ".", "ВАРТА", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return Paths.ToStored(finalPath);
+                return d.ShowDialog() == DialogResult.OK ? d.FileName : null;
             }
-        }
-
-        static bool SameFile(string a, string b)
-        {
-            try { return new FileInfo(a).Length == new FileInfo(b).Length && File.ReadAllBytes(a).Length == File.ReadAllBytes(b).Length && BytesEqual(a, b); }
-            catch { return false; }
-        }
-
-        static bool BytesEqual(string a, string b)
-        {
-            byte[] x = File.ReadAllBytes(a), y = File.ReadAllBytes(b);
-            if (x.Length != y.Length) return false;
-            for (int i = 0; i < x.Length; i++) if (x[i] != y[i]) return false;
-            return true;
         }
 
         public FlowLayoutPanel Buttons(params Button[] btns)

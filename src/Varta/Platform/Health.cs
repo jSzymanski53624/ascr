@@ -200,15 +200,15 @@ namespace Varta.Platform
 
             var missing = new List<string>();
             var used = new List<string>();
-            AddFile(s, AlertEventKind.RedStarted, s.SoundRed, used, missing);
-            AddFile(s, AlertEventKind.YellowStarted, s.SoundYellow, used, missing);
-            AddFile(s, AlertEventKind.YellowFromRed, s.SoundYellowFromRed, used, missing);
-            AddFile(s, AlertEventKind.AllClear, s.SoundClear, used, missing);
+            AddFile(s, AlertEventKind.RedStarted, "Червоний", s.SoundRed, used, missing);
+            AddFile(s, AlertEventKind.YellowStarted, "Жовтий", s.SoundYellow, used, missing);
+            AddFile(s, AlertEventKind.YellowFromRed, "Зниження", s.SoundYellowFromRed, used, missing);
+            AddFile(s, AlertEventKind.AllClear, "Відбій", s.SoundClear, used, missing);
             if (missing.Count > 0)
                 res.Add(Item("audio-files", "Файли оголошень", HealthState.Error,
                     "Не знайдено: " + string.Join(", ", missing.ToArray()) + ". Замість голосу прозвучить резервний сигнал.", "goto-sound", "Вказати файли"));
             else
-                res.Add(Item("audio-files", "Файли оголошень", HealthState.Ok, "Усі потрібні файли на місці (" + used.Count + ")."));
+                res.Add(Item("audio-files", "Файли оголошень", HealthState.Ok, JoinTwoPerLine(used)));
 
             if (!string.IsNullOrEmpty(a.Error) && !a.DeviceAvailable)
                 res.Add(Item("audio-dev", "Пристрій звуку", HealthState.Warn, "Не вдалося опитати звукову підсистему: " + a.Error));
@@ -228,12 +228,22 @@ namespace Varta.Platform
             return res;
         }
 
-        static void AddFile(AppSettings s, AlertEventKind k, string stored, List<string> used, List<string> missing)
+        /// <summary>По два файли на рядок — щоб довгі назви не обрізались.</summary>
+        static string JoinTwoPerLine(List<string> items)
+        {
+            var lines = new List<string>();
+            for (int i = 0; i < items.Count; i += 2)
+                lines.Add(i + 1 < items.Count ? items[i] + " • " + items[i + 1] : items[i]);
+            return string.Join("\n", lines.ToArray());
+        }
+
+        static void AddFile(AppSettings s, AlertEventKind k, string title, string stored, List<string> used, List<string> missing)
         {
             if ((RoutePolicy.Get(s, k) & Channel.Voice) == 0) return;
-            used.Add(stored);
             string full = Paths.Resolve(stored);
-            if (string.IsNullOrWhiteSpace(stored) || !File.Exists(full)) missing.Add(string.IsNullOrWhiteSpace(stored) ? "(не вказано)" : Path.GetFileName(full));
+            string name = string.IsNullOrWhiteSpace(stored) ? "(не вказано)" : Path.GetFileName(full);
+            used.Add(title + " — " + name);
+            if (string.IsNullOrWhiteSpace(stored) || !File.Exists(full)) missing.Add(title + " — " + name);
         }
     }
 }

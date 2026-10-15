@@ -130,7 +130,10 @@ namespace Varta.Ui
                 case AlertEventKind.RedReminder: stored = string.IsNullOrWhiteSpace(s.SoundReminder) ? s.SoundRed : s.SoundReminder; repeat = 1; break;
                 default: return;
             }
-            Audio.Announce(MakeRequest(Paths.Resolve(stored), repeat, s, true, k.ToString()));
+            string file = Paths.Resolve(stored);
+            Log.Info("Голос: " + RoutePolicy.Title(k) + " → " + Path.GetFileName(file) +
+                     (File.Exists(file) ? "" : " (ФАЙЛ НЕ ЗНАЙДЕНО: " + file + ")") + ", повторів: " + repeat);
+            Audio.Announce(MakeRequest(file, repeat, s, true, k.ToString()));
         }
 
         static AnnounceRequest MakeRequest(string file, int repeat, AppSettings s, bool duck, string tag)

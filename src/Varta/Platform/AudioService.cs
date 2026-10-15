@@ -234,11 +234,15 @@ namespace Varta.Platform
             return true;
         }
 
-        static void Beep()
+        void Beep()
         {
             try
             {
-                for (int i = 0; i < 3; i++) { System.Media.SystemSounds.Exclamation.Play(); Thread.Sleep(700); }
+                for (int i = 0; i < 3 && !Cancelled(); i++)
+                {
+                    System.Media.SystemSounds.Exclamation.Play();
+                    if (!SleepCancellable(700, null)) break;
+                }
             }
             catch { }
         }

@@ -1,0 +1,6 @@
+bin/
+obj/
+*.user
+.vs/
+dist/Varta/
+tests/Varta.Tests/TestResults/

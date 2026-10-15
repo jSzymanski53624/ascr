@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Збирає переносиме видання: dist/Varta/ і dist/Varta-portable.zip
+# Потрібні: .NET SDK 8+ (збірка таргетить .NET Framework 4.8 через reference assemblies), zip.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+BIN="$ROOT/src/Varta/bin/Release/net48"
+OUT="$ROOT/dist/Varta"
+
+dotnet build -c Release "$ROOT/src/Varta/Varta.csproj" --nologo
+
+rm -rf "$OUT"
+mkdir -p "$OUT/sounds"
+cp "$BIN/Varta.exe" "$BIN/Varta.exe.config" "$OUT/"
+cp "$ROOT"/src/Varta/Assets/default_sounds/*.mp3 "$OUT/sounds/"
+
+# Блокнот Windows: UTF-8 з BOM і CRLF
+{ printf '\xEF\xBB\xBF'; sed 's/\r$//; s/$/\r/' "$ROOT/docs/README_UA.txt"; } > "$OUT/README_UA.txt"
+
+( cd "$ROOT/dist" && rm -f Varta-portable.zip && zip -qr -X Varta-portable.zip Varta )
+echo "Готово: $ROOT/dist/Varta-portable.zip"

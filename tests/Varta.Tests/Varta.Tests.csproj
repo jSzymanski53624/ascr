@@ -16,9 +16,11 @@
 
   <ItemGroup>
     <Compile Include="..\..\src\Varta\Core\**\*.cs" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\..\src\Varta\ThirdParty\NLayer\**\*.cs" Link="ThirdParty\NLayer\%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="..\..\src\Varta\Platform\Paths.cs" Link="Platform\Paths.cs" />
     <Compile Include="..\..\src\Varta\Platform\SoundFiles.cs" Link="Platform\SoundFiles.cs" />
     <None Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\src\Varta\Assets\default_sounds\*.mp3" Link="Fixtures\default_sounds\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

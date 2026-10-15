@@ -46,7 +46,7 @@ namespace Varta.Ui
         public MainForm(AppController c)
         {
             _c = c;
-            Text = "ВАРТА — сповіщення про повітряну тривогу";
+            Text = "ВАРТА " + AppInfo.Version + " — сповіщення про повітряну тривогу";
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
             Font = Theme.F(9.5f);

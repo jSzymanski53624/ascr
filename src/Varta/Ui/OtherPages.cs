@@ -69,16 +69,16 @@ namespace Varta.Ui
             ht.Location = new Point(20, 14);
             _healthCard.Controls.Add(ht);
             _health.SetBounds(1, 48, 600, 60);
-            _health.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
             _health.ActionClicked += OnHealthAction;
             _health.SizeChanged += delegate { _healthCard.Height = _health.Bottom + 8; };
             _healthCard.Controls.Add(_health);
+            _healthCard.SizeChanged += delegate { FitInner(); };
+            _eventsCard.SizeChanged += delegate { FitInner(); };
 
             Label et = UiKit.Lbl("Останні події", 12f, true, Theme.Navy);
             et.Location = new Point(20, 14);
             _eventsCard.Controls.Add(et);
             _events.SetBounds(16, 48, 620, 196);
-            _events.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right | AnchorStyles.Bottom;
             _events.ReadOnly = true;
             _events.BorderStyle = BorderStyle.None;
             _events.BackColor = Color.White;
@@ -109,8 +109,18 @@ namespace Varta.Ui
                 if (_card.Width != w) _card.Width = w;
                 if (_healthCard.Width != w) _healthCard.Width = w;
                 if (_eventsCard.Width != w) _eventsCard.Width = w;
+                FitInner();
             }
             finally { _relayout = false; }
+        }
+
+        /// <summary>Вкладені елементи — явна ширина картки (без Anchor: його поведінка залежить від моменту першої розкладки).</summary>
+        void FitInner()
+        {
+            int hw = _healthCard.ClientSize.Width - 2;
+            if (hw > 100 && _health.Width != hw) _health.Width = hw;
+            int ew = _eventsCard.ClientSize.Width - 32;
+            if (ew > 100 && _events.Width != ew) _events.Width = ew;
         }
 
         public override void OnShown() { Relayout(); UpdateView(_c.Health()); }
@@ -336,9 +346,12 @@ namespace Varta.Ui
                 "Завжди дійте за офіційними сигналами оповіщення.");
             y = AddBlock(card, y, "Свої голосові файли",
                 "Вкладка «Звук» → «Обрати файл…»: обраний файл застосовується одразу, зберігати нічого не треба. Інші налаштування діють після кнопки «Зберегти налаштування» — вона з'являється внизу вікна на будь-якій сторінці. " +
-                "Можна й просто замінити MP3 у папці sounds (з тими самими назвами). Кнопка «▶ Прослухати» дозволяє перевірити звучання.");
+                "Підтримуються MP3 і WAV. Можна й просто замінити MP3 у папці sounds (з тими самими назвами). Кнопка «▶ Прослухати» показує, чи відтворився файл і яким способом. " +
+                "Якщо файл відтворити не вдалося, замість голосу лунає різкий сигнал із шести гудків, а причина видна в «Стані» та в журналі.");
             y = AddBlock(card, y, "Перенесення на інший комп'ютер",
                 "Скопіюйте всю папку ВАРТИ (разом із settings.json і sounds) і запустіть Varta.exe. Windows може показати попередження SmartScreen для невідомої програми: «Докладніше» → «Все одно виконати».");
+            y = AddBlock(card, y, "Відкриті компоненти",
+                "Для розкодування MP3 використано NLayer (ліцензія MIT, © Mark Heath, Andrew Ward & Contributors). Текст ліцензії — у файлі THIRD_PARTY_NOTICES.txt поруч із програмою.");
             y = AddBlock(card, y, "Якщо щось не працює",
                 "Вкладка «Стан» показує перевірку системи з підказками. Вкладка «Система» → «Запустити діагностику» збирає звіт, який можна надіслати тому, хто вас підтримує.");
             card.Height = y + 10;

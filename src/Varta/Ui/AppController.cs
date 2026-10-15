@@ -28,6 +28,9 @@ namespace Varta.Ui
         public TrayController Tray;
         public readonly List<string> StartupWarnings;
         public readonly bool FirstRun;
+        public PlayReport LastPlay;
+        /// <summary>Показувати вікно, якщо голос у ТЕСТІ не відтворився (вимикається лише в автоматичних перевірках).</summary>
+        public static bool ShowTestFailureDialog = true;
 
         public event Action SettingsApplied;
         public event Action StateChanged;
@@ -44,6 +47,7 @@ namespace Varta.Ui
 
             Audio = new AudioService();
             Audio.Problem += msg => OnUi(delegate { RaiseTech(AlertEventKind.AudioProblem, msg); });
+            Audio.Reported += rep => OnUi(delegate { OnPlayReport(rep); });
             Admin = new AdminNotifier(Http, () => Settings);
             Monitor = new MonitorService(() => Settings, Http);
             Monitor.EventRaised += e => OnUi(delegate { Dispatch(e); });
@@ -70,6 +74,7 @@ namespace Varta.Ui
             Log.Cleanup(Settings.LogRetentionDays);
             Monitor.Start();
             _tick.Start();
+            PreloadSounds();
             RaiseTech(AlertEventKind.AppStarted, "Комп'ютер: " + PcName() + ". Версія " + AppInfo.Version + ". Опитування кожні " + Settings.PollIntervalSeconds + " с.");
         }
 
@@ -102,7 +107,7 @@ namespace Varta.Ui
                 if (e.Kind == AlertEventKind.AllClear) Banners.Hide();
                 if ((route & Channel.Banner) != 0) Banners.Show(n, s);
                 if ((route & Channel.Tray) != 0 && Tray != null) Tray.Balloon(n);
-                if ((route & Channel.Voice) != 0) PlayVoice(e.Kind, s);
+                if ((route & Channel.Voice) != 0) PlayVoice(e.Kind, s, e.IsTest);
                 if ((route & Channel.Admin) != 0 && (!e.IsTest || s.TestsGoToAdmin)) Admin.Send(Messages.AdminText(n, PcName()));
             }
             catch (Exception ex) { Log.Error("Збій під час показу сповіщення", ex); }
@@ -111,7 +116,7 @@ namespace Varta.Ui
             if (h != null) h();
         }
 
-        void PlayVoice(AlertEventKind k, AppSettings s)
+        void PlayVoice(AlertEventKind k, AppSettings s, bool isTest)
         {
             if (!Schedule.VoiceAllowed(s, DateTime.Now))
             {
@@ -133,7 +138,36 @@ namespace Varta.Ui
             string file = Paths.Resolve(stored);
             Log.Info("Голос: " + RoutePolicy.Title(k) + " → " + Path.GetFileName(file) +
                      (File.Exists(file) ? "" : " (ФАЙЛ НЕ ЗНАЙДЕНО: " + file + ")") + ", повторів: " + repeat);
-            Audio.Announce(MakeRequest(file, repeat, s, true, k.ToString()));
+            AnnounceRequest req = MakeRequest(file, repeat, s, true, k.ToString());
+            req.IsTest = isTest;
+            Audio.Announce(req);
+        }
+
+        void PreloadSounds()
+        {
+            AppSettings s = Settings;
+            var files = new List<string>();
+            if (s.VoiceEnabled)
+                foreach (string st in new[] { s.SoundRed, s.SoundYellow, s.SoundYellowFromRed, s.SoundClear, s.SoundReminder })
+                    if (!string.IsNullOrWhiteSpace(st)) files.Add(Paths.Resolve(st));
+            Audio.Preload(files);
+        }
+
+        void OnPlayReport(PlayReport rep)
+        {
+            if (rep.Cancelled) return;
+            LastPlay = rep;
+            string kind = rep.Preview ? "прослуховування" : (rep.IsTest ? "тест" : "оголошення");
+            if (rep.Ok) Log.Info("Озвучено (" + kind + "): «" + rep.FileName + "» — " + rep.Backend + ", " + rep.Seconds);
+            else if (rep.Preview) Log.Warn("Не вдалося відтворити «" + rep.FileName + "»: " + rep.Error);
+
+            if (!rep.Ok && rep.IsTest && ShowTestFailureDialog)
+                MessageBox.Show("Тест: голос не вдалося відтворити — прозвучав лише резервний сигнал.\n\nФайл: " + rep.FileName + "\nПричина: " + rep.Error +
+                                "\n\nПеревірте файл у вкладці «Звук» (кнопка «▶ Прослухати») або запустіть «Система → Діагностика».",
+                    "ВАРТА", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
+            var h = StateChanged;
+            if (h != null) h();
         }
 
         static AnnounceRequest MakeRequest(string file, int repeat, AppSettings s, bool duck, string tag)
@@ -171,9 +205,12 @@ namespace Varta.Ui
             Dispatch(new EngineEvent { Kind = kind, AtUtc = DateTime.UtcNow, Message = message, Source = "" });
         }
 
-        public void PreviewSound(string stored)
+        public void PreviewSound(string stored, Action<PlayReport> done)
         {
-            Audio.Announce(MakeRequest(Paths.Resolve(stored), 1, Settings, false, "preview"));
+            AnnounceRequest req = MakeRequest(Paths.Resolve(stored), 1, Settings, false, "preview");
+            req.Preview = true;
+            if (done != null) req.Done = rep => OnUi(delegate { done(rep); });
+            Audio.Announce(req);
         }
 
         public void StopSound() { Audio.Stop(); }
@@ -191,6 +228,7 @@ namespace Varta.Ui
             }
             Settings = s;
             Monitor.ApplySettings(s);
+            PreloadSounds();
             Log.Info("Налаштування збережено.");
             var h = SettingsApplied;
             if (h != null) h();
@@ -213,7 +251,8 @@ namespace Varta.Ui
                 Settings = Settings,
                 Monitor = Monitor,
                 Admin = Admin,
-                Autostart = Autostart.Query(Paths.ExePath)
+                Autostart = Autostart.Query(Paths.ExePath),
+                LastPlay = LastPlay
             });
         }
 
@@ -327,10 +366,15 @@ namespace Varta.Ui
             foreach (var kv in files)
             {
                 string full = Paths.Resolve(kv.Value);
-                int len;
-                string err = AudioService.CheckFile(full, out len);
-                sb.AppendLine("  • " + kv.Key + ": " + kv.Value + " → " + (err == null ? "OK, тривалість " + (len / 1000.0).ToString("0.0") + " с" : "ПРОБЛЕМА: " + err));
+                ProbeResult pr = AudioProbe.Check(full);
+                sb.AppendLine("  • " + kv.Key + ": " + kv.Value + " → " +
+                              (pr.Ok ? "OK, " + (pr.Format.Length > 0 ? pr.Format + ", " : "") + (pr.DurationMs / 1000.0).ToString("0.0") + " с (" + pr.Backend + ")" : "ПРОБЛЕМА: " + pr.Error));
             }
+            int mciLen;
+            string mciErr = Mci.Probe(Paths.Resolve(s.SoundRed), out mciLen);
+            sb.AppendLine("  • Запасний спосіб MCI: " + (mciErr == null ? "працює" : "не працює на цьому ПК — " + mciErr + " (це нормально: основний спосіб його не використовує)"));
+            if (LastPlay != null && !LastPlay.Cancelled)
+                sb.AppendLine("  • Останнє озвучення " + LastPlay.TimeLocal.ToString("HH:mm:ss") + ": «" + LastPlay.FileName + "» — " + (LastPlay.Ok ? "OK, " + LastPlay.Backend : "ПОМИЛКА: " + LastPlay.Error));
             sb.AppendLine();
 
             AutostartInfo au = Autostart.Query(Paths.ExePath);

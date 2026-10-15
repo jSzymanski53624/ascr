@@ -74,7 +74,7 @@ namespace Varta.Ui
 
         public override void OnShown() { Relayout(); }
 
-        public void PlayPreview(string stored) { C.PreviewSound(stored); }
+        public void PlayPreview(string stored, Action<PlayReport> done) { C.PreviewSound(stored, done); }
 
         public void Bind(Action<AppSettings> load, Action<AppSettings> save)
         {
@@ -274,10 +274,17 @@ namespace Varta.Ui
         /// <summary>Рядок вибору звукового файлу. Вибір («Обрати файл…» або «Стандартний») застосовується одразу, без кнопки «Зберегти».</summary>
         public void SoundRow(string label, Func<AppSettings, string> get, Action<AppSettings, string> set, string defaultStored, string hint)
         {
+            SoundRow(label, get, set, defaultStored, hint, null, "");
+        }
+
+        /// <param name="inherit">Якщо поле порожнє — який файл діє замість нього (наприклад, файл червоного рівня).</param>
+        public void SoundRow(string label, Func<AppSettings, string> get, Action<AppSettings, string> set, string defaultStored, string hint,
+            Func<AppSettings, string> inherit, string inheritLabel)
+        {
             var host = new Panel { BackColor = Color.Transparent };
             var tb = new TextBox { ReadOnly = true, BackColor = Color.White, BorderStyle = BorderStyle.FixedSingle, Font = Theme.F(9.5f), Dock = DockStyle.Top };
             var buttons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, FlowDirection = FlowDirection.LeftToRight, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
-            var status = new Label { Dock = DockStyle.Top, Height = 22, Font = Theme.F(9f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true, BackColor = Color.Transparent };
+            var status = new Label { Dock = DockStyle.Top, Height = 56, Font = Theme.F(9f), ForeColor = Theme.Muted, TextAlign = ContentAlignment.TopLeft, AutoEllipsis = true, BackColor = Color.Transparent };
             Button pick = UiKit.Btn("Обрати файл…", false);
             Button play = UiKit.Btn("▶ Прослухати", false);
             Button reset = UiKit.Btn("Стандартний", false);
@@ -287,16 +294,24 @@ namespace Varta.Ui
             host.Controls.Add(status);
             host.Controls.Add(buttons);
             host.Controls.Add(tb);
-            Row(label, host, 0, 96, hint);
+            Row(label, host, 0, 126, hint);
 
             Action<string, Color> say = delegate(string text, Color c) { status.Text = text; status.ForeColor = c; };
-            Action refresh = delegate
+            Func<string> effective = delegate
             {
                 string stored = tb.Text.Trim();
+                if (stored.Length == 0 && inherit != null) stored = (inherit(_page.Saved) ?? "").Trim();
+                return stored;
+            };
+            Action refresh = delegate
+            {
+                string own = tb.Text.Trim();
+                string stored = effective();
                 string full = Paths.Resolve(stored);
+                string prefix = own.Length == 0 && inherit != null ? "Порожньо — діє " + inheritLabel + ": " : "Діє: ";
                 if (stored.Length == 0) say("файл не вказано", Theme.Muted);
                 else if (!File.Exists(full)) say("✗ файл не знайдено: " + Path.GetFileName(full), Theme.Red);
-                else say("✓ Діє: " + Path.GetFileName(full) + " • " + SizeText(new FileInfo(full).Length), Theme.Green);
+                else say("✓ " + prefix + Path.GetFileName(full) + " • " + SizeText(new FileInfo(full).Length), Theme.Green);
             };
             Func<bool> commit = delegate
             {
@@ -311,18 +326,27 @@ namespace Varta.Ui
             {
                 string chosen = PickFile();
                 if (chosen == null) return;
-                int len;
-                string problem = AudioService.CheckFile(chosen, out len);
-                if (problem != null && MessageBox.Show("Цей файл не вдалося відкрити: " + problem + ".\n\nЯкщо його обрати, замість голосу прозвучить резервний сигнал.\nВсе одно використати?",
+                ProbeResult probe = AudioProbe.Check(chosen);
+                if (!probe.Ok && MessageBox.Show("Цей файл не вдалося відкрити: " + probe.Error + "\n\nЯкщо його обрати, замість голосу прозвучить резервний сигнал.\nВсе одно використати?",
                         "ВАРТА", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
                 SoundImportResult imp = SoundFiles.Import(chosen);
                 if (imp.Warning.Length > 0) MessageBox.Show(imp.Warning, "ВАРТА", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 tb.Text = imp.Stored;
                 if (commit())
-                    say("✓ Застосовано: " + Path.GetFileName(imp.FullPath) + (len > 0 ? " • " + (len / 1000.0).ToString("0.0") + " с" : "") +
+                    say("✓ Застосовано: " + Path.GetFileName(imp.FullPath) + (probe.DurationMs > 0 ? " • " + (probe.DurationMs / 1000.0).ToString("0.0") + " с" : "") +
                         (imp.Copied ? " • скопійовано в папку sounds" : ""), Theme.Green);
             };
-            play.Click += delegate { _page.PlayPreview(tb.Text); };
+            play.Click += delegate
+            {
+                string stored = effective();
+                say("▶ Відтворення…", Theme.Muted);
+                _page.PlayPreview(stored, delegate(PlayReport rep)
+                {
+                    if (rep.Cancelled) refresh();
+                    else if (rep.Ok) say("✓ Відтворено: " + rep.FileName + " • " + rep.Seconds + " • " + rep.Backend, Theme.Green);
+                    else say("✗ Не вдалося відтворити: " + rep.Error, Theme.Red);
+                });
+            };
             reset.Click += delegate
             {
                 tb.Text = defaultStored;

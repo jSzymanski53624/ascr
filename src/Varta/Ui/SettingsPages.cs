@@ -165,7 +165,7 @@ namespace Varta.Ui
             f.SoundRow("Жовтий рівень", s => s.SoundYellow, (s, v) => s.SoundYellow = v, "sounds\\yellow_alert.mp3", null);
             f.SoundRow("Зниження: червоний → жовтий", s => s.SoundYellowFromRed, (s, v) => s.SoundYellowFromRed = v, "sounds\\downgrade_yellow.mp3", null);
             f.SoundRow("Відбій тривоги", s => s.SoundClear, (s, v) => s.SoundClear = v, "sounds\\all_clear.mp3", null);
-            f.SoundRow("Нагадування під час тривоги", s => s.SoundReminder, (s, v) => s.SoundReminder = v, "", "Порожньо — використовується файл червоного рівня.");
+            f.SoundRow("Нагадування під час тривоги", s => s.SoundReminder, (s, v) => s.SoundReminder = v, "", "Порожньо — використовується файл червоного рівня.", s => s.SoundRed, "файл червоного рівня");
             f.Finish();
 
             CardBuilder v2 = NewCard("Гучність і музика",

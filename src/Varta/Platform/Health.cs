@@ -24,6 +24,7 @@ namespace Varta.Platform
         public MonitorService Monitor;
         public AdminNotifier Admin;
         public AutostartInfo Autostart;
+        public PlayReport LastPlay;
     }
 
     /// <summary>Збирає перелік перевірок стану системи для вкладки «Стан».</summary>
@@ -150,6 +151,17 @@ namespace Varta.Platform
 
             // 6. Звук
             list.AddRange(AudioItems(s, m.Audio));
+            PlayReport lp = c.LastPlay;
+            if (lp != null && !lp.Cancelled)
+            {
+                string when = lp.TimeLocal.ToString("HH:mm:ss");
+                string what = lp.Preview ? "прослуховування" : (lp.IsTest ? "тест" : "оголошення");
+                if (lp.Ok)
+                    list.Add(Item("audio-last", "Останнє озвучення", HealthState.Ok, when + " • " + what + " • «" + lp.FileName + "» • " + lp.Seconds + " • " + lp.Backend));
+                else
+                    list.Add(Item("audio-last", "Останнє озвучення", HealthState.Error,
+                        when + " • " + what + " • «" + lp.FileName + "» не відтворено: " + lp.Error, "goto-sound", "Перевірити звук"));
+            }
 
             // 7. Автозапуск
             AutostartInfo a = c.Autostart;

@@ -30,6 +30,9 @@ namespace Varta
         [STAThread]
         static int Main(string[] args)
         {
+            string audioTest = Value(args, "--audio-test=");
+            if (audioTest != null) return AudioSelfTest.Run(audioTest, Value(args, "--save-wav="));
+
             if (Has(args, "--autostart-on")) return Autostart.Set(true, Paths.ExePath) == null ? 0 : 1;
             if (Has(args, "--autostart-off")) return Autostart.Set(false, Paths.ExePath) == null ? 0 : 1;
 
